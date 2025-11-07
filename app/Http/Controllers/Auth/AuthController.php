@@ -48,7 +48,7 @@ class AuthController extends Controller
             ]);
 
             $data  = $this->authService->loginUser($validated);
-            if($data::empty()){
+            if(!$data->isNotEmpty()){
                 return response()->json(['message' => 'Unauthorized'],401);
             }
             
@@ -58,6 +58,17 @@ class AuthController extends Controller
             return response()->json([
                 'error' => $e->getMessage()
             ],500);
+        }
+    }
+
+    public function logout(Request $request) : JsonResponse
+    {
+        try {
+            $request->user()->currentAccessToken()->delete();
+
+            return response()->json(['message' => "logout successfully"],200);
+        } catch (\Exception $e) {
+            return response()->json(['message' => $e->getMessage()],500);
         }
     }
     

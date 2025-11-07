@@ -43,4 +43,5 @@ class AuthService
             'token_type'    => 'Bearer'
         ]);
     }
+
 }

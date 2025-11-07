@@ -48,7 +48,7 @@ class AuthController extends Controller
             ]);
 
             $data  = $this->authService->loginUser($validated);
-            if(!$data){
+            if($data::empty()){
                 return response()->json(['message' => 'Unauthorized'],401);
             }
             

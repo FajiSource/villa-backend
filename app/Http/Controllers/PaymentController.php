@@ -8,13 +8,19 @@ class PaymentController extends Controller
 {
     public function createPayment(Request $request)
     {
-        $amount = $request->amount * 100;
+        $validated = $request->validate([
+            'amount' => 'required|numeric|min:0.01',
+            'currency' => 'nullable|string|max:3',
+            'description' => 'nullable|string|max:500',
+        ]);
+
+        $amount = $validated['amount'] * 100;
 
         $paymentIntent = Paymongo::paymentIntent()->create([
             'amount' => $amount,
             'payment_method_allowed' => ['card', 'gcash', 'paymaya'],
-            'currency' => 'PHP',
-            'description' => 'Sample payment from React app',
+            'currency' => $validated['currency'] ?? 'PHP',
+            'description' => $validated['description'] ?? 'Sample payment from React app',
         ]);
 
         return response()->json($paymentIntent);

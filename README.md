@@ -7,6 +7,28 @@
 <a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
 </p>
 
+## API Setup
+
+Set up your `.env` with Sanctum and SPA origins:
+
+```
+SANCTUM_STATEFUL_DOMAINS=localhost,localhost:5173,127.0.0.1,127.0.0.1:5173,localhost:5174,127.0.0.1:5174
+SESSION_DOMAIN=localhost
+APP_URL=http://127.0.0.1:8000
+```
+
+Auth endpoints:
+
+- POST `/api/register` → `{ user }`
+- POST `/api/login` → `{ token, user, token_type }`
+- POST `/api/logout`
+- GET `/api/user` (alias `/api/me`)
+
+Resources:
+
+- Villas: `GET /api/villas`, `GET /api/villas/{id}`, `POST /api/villas`, `PUT /api/villas/{id}`, `DELETE /api/villas/{id}`
+- Bookings (auth required): `GET /api/bookings`, `POST /api/bookings`, `GET /api/bookings/{id}`
+
 ## About Laravel
 
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:

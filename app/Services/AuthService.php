@@ -19,15 +19,20 @@ class AuthService
 
     public function registerAccount(array $data): Collection
     {
-        $data['username'] = Hash::make($data['password']);
+        $username = $data['username'] ?? (strstr($data['email'], '@', true) ?: $data['name']);
+        $role = $data['role'] ?? 'customer';
         $newUser = User::create([
             'email' => $data['email'],
-            'username' => $data['username'],
+            'username' => $username,
             'phone' => $data['phone'] ?? null,
             'name' => $data['name'],
+            // password hashing handled by model cast
             'password' => $data['password'],
-            'role' => 'customer'
+            'role' => $role
         ]);
+        if (method_exists($newUser, 'assignRole')) {
+            $newUser->assignRole($role);
+        }
         return Collection::make($newUser);
     }
 
@@ -43,5 +48,4 @@ class AuthService
             'token_type'    => 'Bearer'
         ]);
     }
-
 }

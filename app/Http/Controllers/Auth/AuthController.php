@@ -18,19 +18,30 @@ class AuthController extends Controller
         $this->authService = $authService;    
     }
 
-    public function singUpUser(Request $request) : JsonResponse
+    public function signUpUser(Request $request) : JsonResponse
     {
         try {
             $validated = $request->validate([
                 'email' => 'required|email|unique:users,email',
-                'username' => 'required|string',
+                'username' => 'nullable|string',
                 'phone' => 'nullable|string',
                 'name'  => 'required|string',
-                'password'  => 'required|string',
-                
+                'password'  => 'required|string|min:6',
+                'role' => 'nullable|in:admin,customer',
             ]);
+            // derive username if not provided
+            if (empty($validated['username'])) {
+                $validated['username'] = strstr($validated['email'], '@', true) ?: $validated['name'];
+            }
+            // determine role (only admin can assign admin)
+            $role = 'customer';
+            if ($request->user() && $request->user()->role === 'admin' && !empty($validated['role'])) {
+                $role = $validated['role'];
+            }
+            $validated['role'] = $role;
+
             $user = $this->authService->registerAccount($validated);
-            return response()->json(['user' => $user],200);
+            return response()->json(['user' => $user],201);
         } catch (\Exception $e) {
             Log::error('error while creating account: '.$e->getMessage());
             return response()->json([
@@ -49,7 +60,7 @@ class AuthController extends Controller
 
             $data  = $this->authService->loginUser($validated);
             if(!$data->isNotEmpty()){
-                return response()->json(['message' => 'Unauthorized'],401);
+                return response()->json(['message' => 'Unauthorized action.'],401);
             }
             
             return response()->json($data,200);
@@ -64,6 +75,8 @@ class AuthController extends Controller
     public function logout(Request $request) : JsonResponse
     {
         try {
+            $request->validate([]);
+
             $request->user()->currentAccessToken()->delete();
 
             return response()->json(['message' => "logout successfully"],200);

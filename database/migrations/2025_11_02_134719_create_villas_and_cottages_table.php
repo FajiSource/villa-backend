@@ -11,15 +11,15 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // Schema::create('villas_and_cottages', function (Blueprint $table) {
-        //     $table->id();
-        //     $table->enum('type',['Villa','Cottage'])->default('Villa');
-        //     $table->string('name');
-        //     $table->integer('capacity');
-        //     $table->decimal('price_per_night',10,2);
-        //     $table->enum('status',['Available','Booked']);
-        //     $table->timestamps();
-        // });
+        Schema::create('villas_and_cottages', function (Blueprint $table) {
+            $table->id();
+            $table->enum('type',['Villa','Cottage'])->default('Villa');
+            $table->string('name');
+            $table->integer('capacity');
+            $table->decimal('price_per_night',10,2);
+            $table->enum('status',['Available','Booked']);
+            $table->timestamps();
+        });
     }
 
     /**

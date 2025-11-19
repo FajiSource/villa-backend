@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Models\RescheduleRequest;
+use App\Models\Feedback;
 
 class Booking extends Model
 {
@@ -41,6 +43,22 @@ class Booking extends Model
     public function villaAndCottage()
     {
         return $this->belongsTo(VillaAndCottage::class, 'rc_id');
+    }
+
+    /**
+     * Get the reschedule requests for this booking.
+     */
+    public function rescheduleRequests()
+    {
+        return $this->hasMany(RescheduleRequest::class);
+    }
+
+    /**
+     * Get the feedback for this booking.
+     */
+    public function feedback()
+    {
+        return $this->hasOne(Feedback::class, 'booking_id', 'id');
     }
 }
 

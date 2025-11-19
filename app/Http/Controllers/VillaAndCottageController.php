@@ -208,6 +208,7 @@ class VillaAndCottageController extends Controller
                 'capacity' => 'sometimes|integer|min:1',
                 'price_per_night' => 'sometimes|numeric|min:0',
                 'status' => 'sometimes|in:Available,Booked',
+                '_method' => 'sometimes|string', // Allow method spoofing
             ]);
 
             // Handle image upload if new image is provided
@@ -221,6 +222,11 @@ class VillaAndCottageController extends Controller
                 $imageName = time() . '_' . uniqid() . '.' . $image->getClientOriginalExtension();
                 $imagePath = $image->storeAs('villas', $imageName, 'public');
                 $validated['image'] = $imagePath;
+            }
+
+            // Remove _method from validated data if present (it's only for routing)
+            if (isset($validated['_method'])) {
+                unset($validated['_method']);
             }
 
             $villa->update($validated);

@@ -3,9 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\Booking;
+use App\Models\Notification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class BookingController extends Controller
 {
@@ -23,7 +26,14 @@ class BookingController extends Controller
             $user = $request->user();
             
             // If user is admin, show all bookings; otherwise show only user's bookings
-            $query = Booking::with(['user', 'villaAndCottage']);
+            $relationships = ['user', 'villaAndCottage'];
+            
+            // Add feedback relationship if table exists
+            if (Schema::hasTable('feedbacks')) {
+                $relationships[] = 'feedback';
+            }
+            
+            $query = Booking::with($relationships);
             
             if ($user && $user->role !== 'admin') {
                 $query->where('user_id', $user->id);
@@ -31,15 +41,60 @@ class BookingController extends Controller
             
             $bookings = $query->orderBy('created_at', 'desc')->get();
             
+            // Auto-update bookings to completed if check_out date has passed
+            $updatedIds = [];
+            foreach ($bookings as $booking) {
+                if ($booking->status === 'approved' && $booking->check_out) {
+                    $checkOutDate = \Carbon\Carbon::parse($booking->check_out);
+                    if ($checkOutDate->isPast()) {
+                        $oldStatus = $booking->status;
+                        $booking->status = 'completed';
+                        $booking->save();
+                        $updatedIds[] = $booking->id;
+                        
+                        // Create notification when booking is completed
+                        try {
+                            $booking->load('villaAndCottage');
+                            Notification::create([
+                                'user_id' => $booking->user_id,
+                                'title' => 'Stay Completed',
+                                'message' => "Your stay at {$booking->villaAndCottage->name} (Booking #{$booking->id}) has been completed. We hope you enjoyed your stay! Please leave a review if you haven't already.",
+                                'type' => 'booking',
+                                'status' => 'unread',
+                            ]);
+                        } catch (\Exception $e) {
+                            Log::warning('Failed to create notification for completed booking: ' . $e->getMessage());
+                        }
+                    }
+                }
+            }
+            
+            // Reload only updated bookings to refresh relationships
+            if (!empty($updatedIds)) {
+                $updatedBookings = Booking::with($relationships)
+                    ->whereIn('id', $updatedIds)
+                    ->get()
+                    ->keyBy('id');
+                
+                // Replace updated bookings in the collection
+                foreach ($bookings as $index => $booking) {
+                    if (isset($updatedBookings[$booking->id])) {
+                        $bookings[$index] = $updatedBookings[$booking->id];
+                    }
+                }
+            }
+            
             return response()->json([
                 'success' => true,
                 'data' => $bookings
             ], 200);
         } catch (\Exception $e) {
             Log::error('Error fetching bookings: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
             return response()->json([
                 'success' => false,
-                'error' => 'Failed to fetch bookings'
+                'error' => 'Failed to fetch bookings',
+                'message' => $e->getMessage()
             ], 500);
         }
     }
@@ -87,6 +142,19 @@ class BookingController extends Controller
             // Load relationships for response
             $booking->load(['user', 'villaAndCottage']);
             
+            // Create notification for booking submission
+            try {
+                Notification::create([
+                    'user_id' => $user->id,
+                    'title' => 'Booking Submitted',
+                    'message' => "Your booking for {$booking->villaAndCottage->name} has been submitted and is pending approval. Booking ID: #{$booking->id}",
+                    'type' => 'booking',
+                    'status' => 'unread',
+                ]);
+            } catch (\Exception $e) {
+                Log::warning('Failed to create notification for booking: ' . $e->getMessage());
+            }
+            
             return response()->json([
                 'success' => true,
                 'message' => 'Booking created successfully',
@@ -114,13 +182,44 @@ class BookingController extends Controller
 
             $user = $request->user();
             
-            $booking = Booking::with(['user', 'villaAndCottage'])->find($id);
+            $relationships = ['user', 'villaAndCottage'];
+            
+            // Add feedback relationship if table exists
+            if (Schema::hasTable('feedbacks')) {
+                $relationships[] = 'feedback';
+            }
+            
+            $booking = Booking::with($relationships)->find($id);
             
             if (!$booking) {
                 return response()->json([
                     'success' => false,
                     'error' => 'Booking not found'
                 ], 404);
+            }
+            
+            // Auto-update booking to completed if check_out date has passed
+            if ($booking->status === 'approved' && $booking->check_out) {
+                $checkOutDate = \Carbon\Carbon::parse($booking->check_out);
+                if ($checkOutDate->isPast()) {
+                    $booking->status = 'completed';
+                    $booking->save();
+                    // Reload to get updated status
+                    $booking->load($relationships);
+                    
+                    // Create notification when booking is completed
+                    try {
+                        Notification::create([
+                            'user_id' => $booking->user_id,
+                            'title' => 'Stay Completed',
+                            'message' => "Your stay at {$booking->villaAndCottage->name} (Booking #{$booking->id}) has been completed. We hope you enjoyed your stay! Please leave a review if you haven't already.",
+                            'type' => 'booking',
+                            'status' => 'unread',
+                        ]);
+                    } catch (\Exception $e) {
+                        Log::warning('Failed to create notification for completed booking: ' . $e->getMessage());
+                    }
+                }
             }
             
             // Check if user has permission to view this booking
@@ -150,13 +249,28 @@ class BookingController extends Controller
         if (!$user || $user->role !== 'admin') {
             return response()->json(['success' => false, 'error' => 'Unauthorized'], 403);
         }
-        $booking = Booking::find($id);
+        $booking = Booking::with('villaAndCottage')->find($id);
         if (!$booking) {
             return response()->json(['success' => false, 'error' => 'Booking not found'], 404);
         }
         $booking->status = 'approved';
         $booking->approved_at = now();
         $booking->save();
+
+        // Create notification for booking approval
+        try {
+            $checkInDate = \Carbon\Carbon::parse($booking->check_in)->format('M d, Y');
+            $checkOutDate = \Carbon\Carbon::parse($booking->check_out)->format('M d, Y');
+            Notification::create([
+                'user_id' => $booking->user_id,
+                'title' => 'Booking Approved',
+                'message' => "Great news! Your booking #{$booking->id} for {$booking->villaAndCottage->name} has been approved. Check-in: {$checkInDate}, Check-out: {$checkOutDate}",
+                'type' => 'booking',
+                'status' => 'unread',
+            ]);
+        } catch (\Exception $e) {
+            Log::warning('Failed to create notification for booking approval: ' . $e->getMessage());
+        }
 
         return response()->json(['success' => true, 'message' => 'Booking approved', 'data' => $booking], 200);
     }
@@ -167,7 +281,7 @@ class BookingController extends Controller
         if (!$user || $user->role !== 'admin') {
             return response()->json(['success' => false, 'error' => 'Unauthorized'], 403);
         }
-        $booking = Booking::find($id);
+        $booking = Booking::with('villaAndCottage')->find($id);
         if (!$booking) {
             return response()->json(['success' => false, 'error' => 'Booking not found'], 404);
         }
@@ -175,7 +289,85 @@ class BookingController extends Controller
         $booking->approved_at = null;
         $booking->save();
 
+        // Create notification for booking decline
+        try {
+            Notification::create([
+                'user_id' => $booking->user_id,
+                'title' => 'Booking Declined',
+                'message' => "Unfortunately, your booking #{$booking->id} for {$booking->villaAndCottage->name} has been declined. Please contact us for more information or try booking another date.",
+                'type' => 'booking',
+                'status' => 'unread',
+            ]);
+        } catch (\Exception $e) {
+            Log::warning('Failed to create notification for booking decline: ' . $e->getMessage());
+        }
+
         return response()->json(['success' => true, 'message' => 'Booking declined', 'data' => $booking], 200);
+    }
+
+    /**
+     * Cancel/Delete a booking.
+     */
+    public function destroy(Request $request, int $id): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Unauthorized'
+                ], 401);
+            }
+
+            $booking = Booking::find($id);
+            
+            if (!$booking) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Booking not found'
+                ], 404);
+            }
+
+            // Users can only cancel their own bookings, admins can cancel any
+            if ($user->role !== 'admin' && $booking->user_id !== $user->id) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Unauthorized to cancel this booking'
+                ], 403);
+            }
+
+            // Update status to cancelled instead of deleting
+            $booking->status = 'cancelled';
+            $booking->save();
+
+            // Create notification for booking cancellation
+            try {
+                $booking->load('villaAndCottage');
+                $cancelledBy = $user->role === 'admin' ? 'the administrator' : 'you';
+                Notification::create([
+                    'user_id' => $booking->user_id,
+                    'title' => 'Booking Cancelled',
+                    'message' => "Your booking #{$booking->id} for {$booking->villaAndCottage->name} has been cancelled by {$cancelledBy}.",
+                    'type' => 'booking',
+                    'status' => 'unread',
+                ]);
+            } catch (\Exception $e) {
+                Log::warning('Failed to create notification for booking cancellation: ' . $e->getMessage());
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Booking cancelled successfully',
+                'data' => $booking
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Error cancelling booking: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to cancel booking'
+            ], 500);
+        }
     }
 }
 

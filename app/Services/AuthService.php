@@ -3,9 +3,11 @@
 namespace App\Services;
 
 use App\Models\User;
+use App\Models\Notification;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 
 class AuthService
 {
@@ -33,6 +35,22 @@ class AuthService
         if (method_exists($newUser, 'assignRole')) {
             $newUser->assignRole($role);
         }
+        
+        // Create welcome notification for customers
+        if ($role === 'customer') {
+            try {
+                Notification::create([
+                    'user_id' => $newUser->id,
+                    'title' => 'Welcome to Villa Perez Resort!',
+                    'message' => "Welcome {$newUser->name}! Thank you for joining us. Start exploring our luxurious villas and cottages, and book your perfect getaway today!",
+                    'type' => 'system',
+                    'status' => 'unread',
+                ]);
+            } catch (\Exception $e) {
+                Log::warning('Failed to create welcome notification: ' . $e->getMessage());
+            }
+        }
+        
         return Collection::make($newUser);
     }
 

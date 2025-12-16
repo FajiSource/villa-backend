@@ -42,6 +42,11 @@ class AuthController extends Controller
 
             $user = $this->authService->registerAccount($validated);
             return response()->json(['user' => $user],201);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
         } catch (\Exception $e) {
             Log::error('error while creating account: '.$e->getMessage());
             return response()->json([
@@ -65,6 +70,11 @@ class AuthController extends Controller
             
             return response()->json($data,200);
             
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
         } catch (\Exception $e) {
             return response()->json([
                 'error' => $e->getMessage()

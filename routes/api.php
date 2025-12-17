@@ -57,6 +57,7 @@ Route::get('/announcements-debug', function() {
 
 // Stats and admin utilities
 Route::get('/stats/bookings-per-year', [StatsController::class, 'bookingsPerYear']);
+Route::get('/stats/bookings-report', [StatsController::class, 'bookingsReport']);
 Route::get('/stats/bookings-today', [StatsController::class, 'bookingsToday']);
 Route::get('/users/latest', [UserController::class, 'latest']);
 Route::middleware('auth:sanctum')->group(function () {

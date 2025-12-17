@@ -39,6 +39,134 @@ class StatsController extends Controller
         }
     }
 
+    public function bookingsReport(Request $request): JsonResponse
+    {
+        try {
+            $period = $request->query('period', 'yearly');
+            $driver = DB::getDriverName();
+            $bookings = [];
+
+            switch ($period) {
+                case 'daily':
+                    $dateExpr = 'DATE(created_at)';
+                    if ($driver === 'sqlite') {
+                        $dateExpr = 'date(created_at)';
+                    } elseif ($driver === 'pgsql') {
+                        $dateExpr = 'DATE(created_at)';
+                    }
+                    
+                    $bookings = Booking::selectRaw($dateExpr . ' as period, COUNT(*) as total')
+                        ->where('created_at', '>=', now()->subDays(30))
+                        ->groupBy('period')
+                        ->orderBy('period', 'asc')
+                        ->get()
+                        ->map(function($item) {
+                            return [
+                                'period' => $item->period,
+                                'total' => $item->total,
+                                'label' => date('M d, Y', strtotime($item->period))
+                            ];
+                        });
+                    break;
+
+                case 'weekly':
+                    if ($driver === 'sqlite') {
+                        $bookings = Booking::selectRaw('strftime("%Y-%W", created_at) as period, COUNT(*) as total')
+                            ->where('created_at', '>=', now()->subWeeks(12))
+                            ->groupBy('period')
+                            ->orderBy('period', 'asc')
+                            ->get()
+                            ->map(function($item) {
+                                $year = substr($item->period, 0, 4);
+                                $week = substr($item->period, 5);
+                                $date = new \DateTime();
+                                $date->setISODate($year, $week);
+                                return [
+                                    'period' => $item->period,
+                                    'total' => $item->total,
+                                    'label' => 'Week ' . $week . ', ' . $year
+                                ];
+                            });
+                    } else {
+                        $weekExpr = 'YEARWEEK(created_at)';
+                        if ($driver === 'pgsql') {
+                            $weekExpr = "TO_CHAR(created_at, 'IYYY-IW')";
+                        }
+                        
+                        $bookings = Booking::selectRaw($weekExpr . ' as period, COUNT(*) as total')
+                            ->where('created_at', '>=', now()->subWeeks(12))
+                            ->groupBy('period')
+                            ->orderBy('period', 'asc')
+                            ->get()
+                            ->map(function($item) {
+                                return [
+                                    'period' => $item->period,
+                                    'total' => $item->total,
+                                    'label' => 'Week ' . $item->period
+                                ];
+                            });
+                    }
+                    break;
+
+                case 'monthly':
+                    $monthExpr = 'DATE_FORMAT(created_at, "%Y-%m")';
+                    if ($driver === 'sqlite') {
+                        $monthExpr = 'strftime("%Y-%m", created_at)';
+                    } elseif ($driver === 'pgsql') {
+                        $monthExpr = "TO_CHAR(created_at, 'YYYY-MM')";
+                    }
+                    
+                    $bookings = Booking::selectRaw($monthExpr . ' as period, COUNT(*) as total')
+                        ->where('created_at', '>=', now()->subMonths(12))
+                        ->groupBy('period')
+                        ->orderBy('period', 'asc')
+                        ->get()
+                        ->map(function($item) {
+                            return [
+                                'period' => $item->period,
+                                'total' => $item->total,
+                                'label' => date('M Y', strtotime($item->period . '-01'))
+                            ];
+                        });
+                    break;
+
+                case 'yearly':
+                default:
+                    $yearExpr = 'YEAR(created_at)';
+                    if ($driver === 'sqlite') {
+                        $yearExpr = 'strftime("%Y", created_at)';
+                    } elseif ($driver === 'pgsql') {
+                        $yearExpr = 'EXTRACT(YEAR FROM created_at)';
+                    }
+                    
+                    $bookings = Booking::selectRaw($yearExpr . ' as period, COUNT(*) as total')
+                        ->groupBy('period')
+                        ->orderBy('period', 'asc')
+                        ->get()
+                        ->map(function($item) {
+                            return [
+                                'period' => $item->period,
+                                'total' => $item->total,
+                                'label' => $item->period
+                            ];
+                        });
+                    break;
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $bookings,
+                'period' => $period
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Error fetching bookings report: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to fetch stats: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
     public function bookingsToday(Request $request): JsonResponse
     {
         try {

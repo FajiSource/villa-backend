@@ -369,5 +369,53 @@ class BookingController extends Controller
             ], 500);
         }
     }
+
+    public function checkAvailability(Request $request): JsonResponse
+    {
+        try {
+            $validated = $request->validate([
+                'rc_id' => 'required|integer|exists:villas_and_cottages,id',
+            ]);
+
+            $rcId = $validated['rc_id'];
+
+            $bookings = Booking::where('rc_id', $rcId)
+                ->whereIn('status', ['pending', 'approved'])
+                ->where(function($query) {
+                    $query->whereNull('check_out')
+                        ->orWhere('check_out', '>=', now());
+                })
+                ->get();
+
+            $unavailableDates = [];
+            foreach ($bookings as $booking) {
+                if ($booking->check_in && $booking->check_out) {
+                    $checkIn = \Carbon\Carbon::parse($booking->check_in);
+                    $checkOut = \Carbon\Carbon::parse($booking->check_out);
+                    
+                    $currentDate = $checkIn->copy();
+                    while ($currentDate->lt($checkOut)) {
+                        $unavailableDates[] = $currentDate->format('Y-m-d');
+                        $currentDate->addDay();
+                    }
+                }
+            }
+
+            $unavailableDates = array_unique($unavailableDates);
+            sort($unavailableDates);
+
+            return response()->json([
+                'success' => true,
+                'unavailable_dates' => $unavailableDates
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Error checking availability: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to check availability',
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
 }
 

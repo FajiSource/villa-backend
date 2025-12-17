@@ -98,6 +98,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/bookings', [BookingController::class, 'store']);
     Route::get('/bookings/{id}', [BookingController::class, 'show']);
     Route::delete('/bookings/{id}', [BookingController::class, 'destroy']);
+    Route::get('/bookings/availability/check', [BookingController::class, 'checkAvailability']);
 
     // Reschedule requests
     Route::post('/reschedule-requests', [RescheduleController::class, 'store']);
